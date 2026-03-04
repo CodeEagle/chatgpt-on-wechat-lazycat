@@ -66,7 +66,7 @@ jobs:
           else
             # 获取最新版本 - 从 Docker Hub 获取
             # 由于该项目没有 GitHub Releases，使用 latest 标签的时间戳作为版本
-            LATEST_VERSION=$(date +'%Y.%m.%d')
+            LATEST_VERSION=$(date +'%Y.%-m.%-d')
             RELEASE_NOTES="Auto-build from upstream latest image"
             echo "Using date-based version: $LATEST_VERSION"
           fi
