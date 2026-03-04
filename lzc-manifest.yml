@@ -59,16 +59,7 @@ services:
 
       # 如果配置文件不存在，创建默认配置（含 Mock API Key）
       if [ ! -f "$CONFIG_FILE" ]; then
-        cat > "$CONFIG_FILE" << 'EOF'
-{
-  "channel_type": "web",
-  "web_port": 9899,
-  "model": "chatgpt",
-  "open_ai_api_key": "sk-placeholder-replace-in-settings",
-  "conversation_max_tokens": 4096,
-  "character_desc": "你是一个智能助手，请在设置中配置有效的 API 密钥"
-}
-EOF
+        printf '{\n  "channel_type": "web",\n  "web_port": 9899,\n  "model": "chatgpt",\n  "open_ai_api_key": "sk-placeholder-replace-in-settings",\n  "conversation_max_tokens": 4096,\n  "character_desc": "你是一个智能助手，请在设置中配置有效的 API 密钥"\n}\n' > "$CONFIG_FILE"
         echo "Created default config.json with mock API key"
       fi
 
