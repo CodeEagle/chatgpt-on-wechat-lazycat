@@ -57,7 +57,13 @@ services:
 
       # 如果配置文件不存在，创建默认配置
       if [ ! -f "$CONFIG_FILE" ]; then
-        printf '{\n  "channel_type": "web",\n  "web_port": 9899,\n  "model": "chatgpt",\n  "conversation_max_tokens": 4096,\n  "character_desc": "你是一个智能助手，请在设置中配置有效的 API 密钥"\n}\n' > "$CONFIG_FILE"
+        echo "{" > "$CONFIG_FILE"
+        echo "  \"channel_type\": \"web\"," >> "$CONFIG_FILE"
+        echo "  \"web_port\": 9899," >> "$CONFIG_FILE"
+        echo "  \"model\": \"chatgpt\"," >> "$CONFIG_FILE"
+        echo "  \"conversation_max_tokens\": 4096," >> "$CONFIG_FILE"
+        echo "  \"character_desc\": \"你是一个智能助手\"" >> "$CONFIG_FILE"
+        echo "}" >> "$CONFIG_FILE"
         echo "Created default config.json"
       fi
 locales:
