@@ -198,7 +198,7 @@ jobs:
 
           printf 'Host github.com\n  Hostname ssh.github.com\n  Port 443\n  User git\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
 
-          git remote set-url origin git@github.com:CodeEagle/${{ env.PROJECT_NAME }}.git
+          git remote set-url origin git@github.com:${{ github.repository }}.git
           git push
 
       - name: Publish to LazyCat App Store
