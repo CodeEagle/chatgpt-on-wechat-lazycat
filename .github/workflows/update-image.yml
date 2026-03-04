@@ -64,11 +64,14 @@ jobs:
             echo "Using specified version: $LATEST_VERSION"
             RELEASE_NOTES="Build version $LATEST_VERSION"
           else
-            # 获取最新版本 - 从 Docker Hub 获取
-            # 由于该项目没有 GitHub Releases，使用 latest 标签的时间戳作为版本
-            LATEST_VERSION=$(date +'%Y.%-m.%-d')
-            RELEASE_NOTES="Auto-build from upstream latest image"
-            echo "Using date-based version: $LATEST_VERSION"
+            # 从上游 GitHub 获取最新 release tag
+            LATEST_VERSION=$(gh api "repos/${{ env.UPSTREAM_REPO }}/releases/latest" --jq '.tag_name')
+            if [ -z "$LATEST_VERSION" ]; then
+              echo "Failed to get latest version from upstream"
+              exit 1
+            fi
+            RELEASE_NOTES="Auto-build from upstream $LATEST_VERSION"
+            echo "Using upstream version: $LATEST_VERSION"
           fi
 
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
