@@ -46,26 +46,29 @@ services:
       - MOONSHOT_API_KEY
       - MINIMAX_API_KEY
     binds:
-      - /lzcapp/var/config:/app/config.json
+      - /lzcapp/var/config:/lzcapp/config
       - /lzcapp/var/data:/app/tmp
-      - /lzcapp/var/logs:/app/run.log
     setup_script: |
       # 创建数据目录
       mkdir -p /app/tmp
+      mkdir -p /lzcapp/config
 
-      CONFIG_FILE="/app/config.json"
+      CONFIG_SRC="/lzcapp/config/config.json"
 
       # 如果配置文件不存在，创建默认配置
-      if [ ! -f "$CONFIG_FILE" ]; then
-        echo "{" > "$CONFIG_FILE"
-        echo "  \"channel_type\": \"web\"," >> "$CONFIG_FILE"
-        echo "  \"web_port\": 9899," >> "$CONFIG_FILE"
-        echo "  \"model\": \"chatgpt\"," >> "$CONFIG_FILE"
-        echo "  \"conversation_max_tokens\": 4096," >> "$CONFIG_FILE"
-        echo "  \"character_desc\": \"你是一个智能助手\"" >> "$CONFIG_FILE"
-        echo "}" >> "$CONFIG_FILE"
+      if [ ! -f "$CONFIG_SRC" ]; then
+        echo "{" > "$CONFIG_SRC"
+        echo "  \"channel_type\": \"web\"," >> "$CONFIG_SRC"
+        echo "  \"web_port\": 9899," >> "$CONFIG_SRC"
+        echo "  \"model\": \"chatgpt\"," >> "$CONFIG_SRC"
+        echo "  \"conversation_max_tokens\": 4096," >> "$CONFIG_SRC"
+        echo "  \"character_desc\": \"你是一个智能助手\"" >> "$CONFIG_SRC"
+        echo "}" >> "$CONFIG_SRC"
         echo "Created default config.json"
       fi
+
+      # 链接配置文件到应用目录
+      ln -sf "$CONFIG_SRC" /app/config.json
 locales:
   en:
     name: ChatGPT-on-WeChat
