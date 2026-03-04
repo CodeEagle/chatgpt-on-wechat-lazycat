@@ -1,0 +1,219 @@
+name: Update ChatGPT-on-WeChat Image
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if no new version'
+        required: false
+        default: false
+        type: boolean
+      target_version:
+        description: 'Target version to build (e.g., 1.0.0). Leave empty for latest.'
+        required: false
+        default: ''
+        type: string
+  # 定时检查，每6小时一次
+  schedule:
+    - cron: '0 */6 * * *'
+
+# ==================== 配置区域 ====================
+env:
+  # 上游仓库信息
+  UPSTREAM_REPO: zhayujie/chatgpt-on-wechat
+  PROJECT_NAME: ChatGPT-on-WeChat
+  PROJECT_NAME_LOWER: chatgpt-on-wechat
+
+  # 镜像配置
+  # 官方镜像地址
+  OFFICIAL_IMAGE_REGISTRY: docker.io/zhayujie/chatgpt-on-wechat
+
+  # 预编译二进制配置（本项目使用官方镜像，不需要）
+  PRECOMPILED_BINARY_URL: ''
+  DOCKERFILE_TYPE: simple
+  SERVICE_PORT: 9899
+  SERVICE_CMD: '["python", "app.py"]'
+# ==================== 配置区域结束 ====================
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest package version
+        id: get-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_VERSION="${{ inputs.target_version }}"
+
+          if [ -n "$TARGET_VERSION" ]; then
+            # 使用指定版本
+            LATEST_VERSION="$TARGET_VERSION"
+            echo "Using specified version: $LATEST_VERSION"
+            RELEASE_NOTES="Build version $LATEST_VERSION"
+          else
+            # 获取最新版本 - 从 Docker Hub 获取
+            # 由于该项目没有 GitHub Releases，使用 latest 标签的时间戳作为版本
+            LATEST_VERSION=$(date +'%Y.%m.%d')
+            RELEASE_NOTES="Auto-build from upstream latest image"
+            echo "Using date-based version: $LATEST_VERSION"
+          fi
+
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" > /tmp/release_notes.txt
+          echo "release_notes_file=/tmp/release_notes.txt" >> $GITHUB_OUTPUT
+
+      - name: Check if update needed
+        id: check-update
+        run: |
+          CURRENT_IMAGE=$(grep 'image:' lzc-manifest.yml | head -1 | awk '{print $2}')
+          echo "Current image: $CURRENT_IMAGE"
+
+          LATEST_VERSION="${{ steps.get-version.outputs.latest_version }}"
+          FORCE_BUILD="${{ inputs.force_build }}"
+          TARGET_VERSION="${{ inputs.target_version }}"
+
+          if [ -n "$TARGET_VERSION" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "Target version specified: $TARGET_VERSION"
+          elif [ "$FORCE_BUILD" = "true" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "Force build requested"
+          elif [[ "$CURRENT_IMAGE" != *"chatgpt-on-wechat"* ]] || [[ "$CURRENT_IMAGE" != *"$LATEST_VERSION"* ]]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "New version available: $LATEST_VERSION"
+          else
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "Already on latest version"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check-update.outputs.update_needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install lzc-cli
+        if: steps.check-update.outputs.update_needed == 'true'
+        run: npm install -g @lazycatcloud/lzc-cli
+
+      - name: Build and push image
+        if: steps.check-update.outputs.update_needed == 'true'
+        id: build-image
+        env:
+          LZC_CLI_TOKEN: ${{ secrets.LZC_CLI_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_VERSION="${{ steps.get-version.outputs.latest_version }}"
+
+          # 检查官方镜像
+          if [ -n "${{ env.OFFICIAL_IMAGE_REGISTRY }}" ]; then
+            SOURCE_IMAGE="${{ env.OFFICIAL_IMAGE_REGISTRY }}:latest"
+            echo "Checking official image: $SOURCE_IMAGE"
+
+            # 拉取镜像验证存在
+            if docker pull "$SOURCE_IMAGE" 2>/dev/null; then
+              echo "Official image found, copying..."
+
+              # 给镜像打上版本标签
+              docker tag "$SOURCE_IMAGE" "$SOURCE_IMAGE:$LATEST_VERSION"
+
+              COPY_OUTPUT=$(lzc-cli appstore copy-image "$SOURCE_IMAGE:$LATEST_VERSION" 2>&1)
+              echo "$COPY_OUTPUT"
+              ACCELERATED_URL=$(echo "$COPY_OUTPUT" | grep -oE 'registry\.lazycat\.cloud/[a-zA-Z0-9_/.:-]+' | head -1 || echo "")
+
+              if [ -n "$ACCELERATED_URL" ]; then
+                echo "accelerated_url=$ACCELERATED_URL" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+
+              # 如果带版本标签失败，尝试直接复制 latest
+              COPY_OUTPUT=$(lzc-cli appstore copy-image "$SOURCE_IMAGE" 2>&1)
+              echo "$COPY_OUTPUT"
+              ACCELERATED_URL=$(echo "$COPY_OUTPUT" | grep -oE 'registry\.lazycat\.cloud/[a-zA-Z0-9_/.:-]+' | head -1 || echo "")
+
+              if [ -n "$ACCELERATED_URL" ]; then
+                echo "accelerated_url=$ACCELERATED_URL" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "Failed to copy image"
+          exit 1
+
+      - name: Update manifest
+        if: steps.check-update.outputs.update_needed == 'true'
+        run: |
+          ACCELERATED_URL="${{ steps.build-image.outputs.accelerated_url }}"
+          LATEST_VERSION="${{ steps.get-version.outputs.latest_version }}"
+
+          sed -i "s|image:.*|image: $ACCELERATED_URL|g" lzc-manifest.yml
+          sed -i "s/^version:.*/version: $LATEST_VERSION/g" lzc-manifest.yml
+
+          echo "Updated to version: $LATEST_VERSION"
+          echo "Updated image: $ACCELERATED_URL"
+
+      - name: Build package
+        if: steps.check-update.outputs.update_needed == 'true'
+        env:
+          LZC_CLI_TOKEN: ${{ secrets.LZC_CLI_TOKEN }}
+        run: |
+          lzc-cli project build -o ${{ env.PROJECT_NAME_LOWER }}.lpk
+
+      - name: Publish to appstore
+        if: steps.check-update.outputs.update_needed == 'true'
+        env:
+          LZC_CLI_TOKEN: ${{ secrets.LZC_CLI_TOKEN }}
+        run: |
+          LATEST_VERSION="${{ steps.get-version.outputs.latest_version }}"
+          RELEASE_NOTES=$(cat /tmp/release_notes.txt)
+
+          lzc-cli appstore publish ${{ env.PROJECT_NAME_LOWER }}.lpk --clang en -c "$RELEASE_NOTES"
+
+      - name: Create GitHub Release
+        if: steps.check-update.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_VERSION="${{ steps.get-version.outputs.latest_version }}"
+
+          # 如果 release 已存在则先删除
+          gh release delete "v$LATEST_VERSION" --yes 2>/dev/null || true
+
+          gh release create "v$LATEST_VERSION" \
+            --title "${{ env.PROJECT_NAME }} v$LATEST_VERSION" \
+            --notes-file /tmp/release_notes.txt \
+            ${{ env.PROJECT_NAME_LOWER }}.lpk
+
+      - name: Commit and push changes
+        if: steps.check-update.outputs.update_needed == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add lzc-manifest.yml
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Update ${{ env.PROJECT_NAME }} to version ${{ steps.get-version.outputs.latest_version }}"
+
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf 'Host github.com\n  Hostname ssh.github.com\n  Port 443\n  User git\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+          git remote set-url origin git@github.com:CodeEagle/${{ env.PROJECT_NAME }}.git
+          git push
