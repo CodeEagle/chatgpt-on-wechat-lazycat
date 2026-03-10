@@ -16,7 +16,7 @@ application:
       backend: http://chatgpt-on-wechat:9899/
 services:
   chatgpt-on-wechat:
-    image: registry.lazycat.cloud/invokerlaw/zhayujie/chatgpt-on-wechat:25d1b65b3f7a5473
+    image: registry.lazycat.cloud/invokerlaw/codeeagle/chatgpt-on-wechat-lazycat:b9d51c6ed4f45aff
     environment:
       # 必需配置 - Mock 值，启动后需要用户在设置中配置
       - OPEN_AI_API_KEY
